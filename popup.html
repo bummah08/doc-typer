@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docs Paced Typing</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header><span class="mark" aria-hidden="true">Aa</span><div><h1>Docs Paced Typing</h1><p>Your text, at your pace.</p></div></header>
+  <form id="form">
+    <label for="text">Text to type</label>
+    <textarea id="text" maxlength="100000" placeholder="Paste your text here…" required></textarea>
+    <div id="estimate" class="muted">Plain text · line breaks supported</div>
+    <div class="settings">
+      <div><label for="wpm">Speed <span class="muted">WPM</span></label><input id="wpm" type="number" min="10" max="150" value="45" required></div>
+      <div><label for="typoRate">Corrected typos <span class="muted">%</span></label><input id="typoRate" type="number" min="0" max="10" step="0.5" value="2" required></div>
+    </div>
+    <label class="check"><input id="pauses" type="checkbox" checked> Add punctuation, word, and sentence pauses</label>
+    <p class="hint">Sentence breaks last 3–7 seconds after every 2–4 full stops (.).</p>
+    <p class="hint">Open a Google Doc, then start. You have 5 seconds to click where typing should begin. Keep the editor focused.</p>
+    <div class="buttons"><button id="start" type="submit">Start typing <span aria-hidden="true">→</span></button><button id="stop" type="button" disabled>Stop</button></div>
+  </form>
+  <section class="status"><div id="status" role="status" aria-live="polite">Ready</div><progress id="progress" max="1" value="0" aria-label="Typing progress"></progress><div id="counts" class="muted"></div></section>
+  <footer>Stop shortcut: <strong id="shortcut">Ctrl + Shift + .</strong><br>Text stays in this browser session until sent to your Doc. Chrome displays a debugging banner while typing.</footer>
+  <script src="popup.js" type="module"></script>
+</body>
+</html>
