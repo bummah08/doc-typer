@@ -4,7 +4,7 @@ A dependency-free Chrome extension that types supplied plain text into Google Do
 
 ## Install
 
-Updating from 1.0.0: replace the files in your existing unpacked extension folder with this version, then click its **Reload** button at `chrome://extensions`. Reloading ends any active typing session.
+Updating from 1.0.0 or 1.1.0: replace the files in your existing unpacked extension folder with this version, then click its **Reload** button at `chrome://extensions` (or `opera://extensions`). Reloading ends any active typing session. Version 1.2.0 includes support for the optional Windows GitHub updater below.
 
 1. Extract the ZIP to a permanent folder.
 2. Open `chrome://extensions` in Chrome 118 or newer.
@@ -33,17 +33,35 @@ Stopping leaves the text already entered. There is no automatic resume or rollba
 
 ## Privacy and permissions
 
-The extension has no server, analytics, external dependencies, or network requests. Draft text and progress are kept in Chrome's session storage and are cleared when the browser session ends or the extension is reloaded/disabled. Text typed into Google Docs is handled by Google normally. The extension never reads the document's text.
+The extension has no server, analytics, external dependencies, or remote network requests. Draft text and progress are kept in Chrome's session storage. During an automatic update, a temporary copy in local extension storage preserves the draft and status across reload; it is removed after the updated extension starts. Manual reloads or browser shutdown normally clear the session data. Text typed into Google Docs is handled by Google normally. The extension never reads the document's text. The optional local updater contacts GitHub to download code; it does not read or upload drafts or document contents.
 
 - `activeTab`: identify the Doc you explicitly start from.
 - `debugger`: send keyboard input to that tab and inspect editor focus. This is a powerful permission and Chrome displays a visible debugging banner. The implementation only attaches to an active `https://docs.google.com/document/.../edit` tab and detaches when the run ends.
 - `storage`: hold the draft, settings, and progress for this browser session.
+- `alarms`: check once a minute whether the local updater has installed a complete newer version. A running typing session postpones reload.
+
+## Automatic updates on Windows
+
+Unpacked extensions do not pull updates from GitHub on their own. The optional helper in `updater/` downloads the runtime files listed in `release-files.json` from the private repository `bummah08/docs-paced-typing`, branch `main`, using Git Credential Manager. No GitHub credential is stored in the extension or repository.
+
+One-time setup requires Node.js 20+, Git with Git Credential Manager, and signing in to an account that can read the repository. Run the following in PowerShell, substituting the actual installed extension directory:
+
+```powershell
+git credential-manager github login --username bummah08 --device
+./updater/install.ps1 -ExtensionPath 'C:\path\to\docs-paced-typing'
+```
+
+The installer validates and downloads the current release, backs up existing runtime files, and registers **Docs Paced Typing GitHub Updater** for the current Windows user. It runs silently at sign-in and every five minutes while that user is signed in. Reload the existing extension once in Opera/Chrome after the first installation. After that, the extension checks the completion marker once a minute and reloads when idle. New permissions in a future version may still require browser approval.
+
+Every runtime change must have a higher `manifest.json` version. Failed downloads, incomplete releases, unsafe file paths, downgrades, and detected edits to previously managed local files are rejected. A backup is saved before every installation; a file-write failure restores previous files. The helper itself is installed separately and is not replaced automatically from GitHub. New runtime assets must be included in `release-files.json`.
+
+Configuration, update log, Git cache, installed revision, and backups are stored in `%LOCALAPPDATA%\DocsPacedTypingUpdater`. If an update fails, inspect `update.log`. Disable the named task in Windows Task Scheduler to stop polling. For a manual check, run the installed `update.mjs` with Node and its `config.json` path. Keep the installed extension folder and the Node/Git installations in place.
 
 Chrome documentation: [debugger API](https://developer.chrome.com/docs/extensions/reference/api/debugger), [keyboard input protocol](https://chromedevtools.github.io/devtools-protocol/tot/Input/), and [service worker lifecycle](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle). Chrome 118+ keeps a service worker alive during an active debugger session.
 
 ## Validation
 
-Local automated checks cover typing plans, full-stop sentence breaks, input normalization, document URL restrictions, key events, and session cancellation/error handling. Run them with Node.js 20+ using `node tests/verify.mjs` from the extension folder.
+Local automated checks cover typing plans, full-stop sentence breaks, input normalization, document URL restrictions, key events, session cancellation/error handling, and idle update reloads. Run `node tests/verify.mjs` and `node tests/updater.mjs` with Node.js 20+ from the repository folder.
 
 A separate real Chrome test of version 1.0.0 with a local editable iframe reproduced the intended sample exactly using forced typos, Backspace, capitals, punctuation, line breaks, and Unicode. It also verified that the focus guard accepts the editor iframe and rejects a title input. This tests Chrome input and focus behavior, not Google's application logic.
 

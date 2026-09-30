@@ -84,9 +84,10 @@ async function harness(options = {}) {
   };
   const event = name => ({ addListener: fn => { listeners[name] = fn; } });
   globalThis.chrome = {
-    storage: { session: { get: async key => ({ [key]: saved[key] }), set: async object => Object.assign(saved, object) } },
+    storage: { session: { get: async key => Array.isArray(key) ? Object.fromEntries(key.filter(k => saved[k] !== undefined).map(k => [k, saved[k]])) : ({ [key]: saved[key] }), set: async object => Object.assign(saved, object) }, local: { get: async () => ({}), set: async object => { saved.local = object; }, remove: async () => { delete saved.local; } } },
     action: { setBadgeBackgroundColor: async () => {}, setBadgeText: async () => {} },
-    runtime: { id: 'test-extension', onMessage: event('message') },
+    runtime: { id: 'test-extension', onMessage: event('message'), getURL: name => `https://extension.test/${name}`, getManifest: () => ({ version: '1.2.0' }), reload: () => calls.push('reload') },
+    alarms: { create: async () => {}, onAlarm: event('alarm') },
     tabs: { get: async () => ({ active: true, windowId: 1, url: options.url || 'https://docs.google.com/document/d/test/edit' }), onActivated: event('activated'), onUpdated: event('updated'), onRemoved: event('removed') },
     windows: { onFocusChanged: event('focus') }, commands: { onCommand: event('command') },
     debugger: {
@@ -208,5 +209,59 @@ await integration('focus loss after a sentence break prevents further typing', a
   assert.equal(typed, h.breaks[0].inputs);
   assert.match(h.saved.status.message, /Focus must stay/);
 });
+const originalFetch = globalThis.fetch;
+await integration('complete local update reloads an idle extension', async () => {
+  const h = await harness();
+  h.saved.draft = { text: 'Keep this draft', wpm: 45 };
+  globalThis.fetch = async url => ({ ok: true, json: async () => url.endsWith('manifest.json') ? { version: '1.3.0' } : { ready: true, version: '1.3.0', commit: 'new' } });
+  h.listeners.alarm({ name: 'check-installed-update' });
+  await until(() => h.calls.includes('reload'));
+  assert.deepEqual(h.saved.local.updateBackup.draft, h.saved.draft);
+});
+await integration('partial, missing, or unchanged updates never reload', async () => {
+  for (const marker of [null, { ready: false, version: '1.3.0' }, { ready: true, version: '1.2.0' }]) {
+    const h = await harness();
+    globalThis.fetch = async () => ({ ok: marker !== null, json: async () => marker });
+    h.listeners.alarm({ name: 'check-installed-update' });
+    await new Promise(resolve => originalSetTimeout(resolve, 5));
+    assert.equal(h.calls.includes('reload'), false);
+  }
+});
+await integration('an update cannot reload during a typing session', async () => {
+  const h = await harness({ pauses: true, holdBreak: true }); await h.start('A. B. C. D. E.');
+  await until(() => h.breaks.length > 0);
+  let fetched = false;
+  globalThis.fetch = async () => { fetched = true; throw new Error('Should not fetch'); };
+  h.listeners.alarm({ name: 'check-installed-update' });
+  assert.equal(fetched, false);
+  assert.equal(h.calls.includes('reload'), false);
+  await h.message({ type: 'stop' });
+  await until(() => h.saved.status?.phase === 'stopped');
+});
+await integration('a typing session started during the update check prevents reload', async () => {
+  const h = await harness({ pauses: true, holdBreak: true });
+  let release; const gate = new Promise(resolve => { release = resolve; });
+  globalThis.fetch = async url => {
+    await gate;
+    return { ok: true, json: async () => url.endsWith('manifest.json') ? { version: '1.3.0' } : { ready: true, version: '1.3.0', commit: 'new' } };
+  };
+  h.listeners.alarm({ name: 'check-installed-update' });
+  await h.start('A. B. C. D. E.');
+  release();
+  await until(() => h.breaks.length > 0);
+  assert.equal(h.calls.includes('reload'), false);
+  await h.message({ type: 'stop' });
+  await until(() => h.saved.status?.phase === 'stopped');
+});
+await integration('a changed update marker or mismatched manifest prevents reload', async () => {
+  for (const mismatch of ['commit', 'manifest']) {
+    const h = await harness(); let reads = 0;
+    globalThis.fetch = async url => ({ ok: true, json: async () => url.endsWith('manifest.json') ? { version: mismatch === 'manifest' ? '1.4.0' : '1.3.0' } : { ready: true, version: '1.3.0', commit: ++reads === 2 && mismatch === 'commit' ? 'other' : 'new' } });
+    h.listeners.alarm({ name: 'check-installed-update' });
+    await new Promise(resolve => originalSetTimeout(resolve, 5));
+    assert.equal(h.calls.includes('reload'), false);
+  }
+});
+globalThis.fetch = originalFetch;
 globalThis.setTimeout = originalSetTimeout;
 console.log(`${checks} checks passed.`);

@@ -1,10 +1,10 @@
 {
   "manifest_version": 3,
   "name": "Docs Paced Typing",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Type your supplied text into Google Docs with adjustable pacing and optional corrected typos.",
   "minimum_chrome_version": "118",
-  "permissions": ["activeTab", "debugger", "storage"],
+  "permissions": ["activeTab", "debugger", "storage", "alarms"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": { "default_popup": "popup.html", "default_title": "Docs Paced Typing" },
   "commands": {

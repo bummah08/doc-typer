@@ -2,10 +2,48 @@ import { normalizeText, settingsFrom, characterPlan, createSentencePauser, isGoo
 
 let active = null;
 let last = { phase: "idle", completed: 0, total: 0, message: "Ready" };
-const ready = chrome.storage.session.get("status").then(({ status }) => {
+const ready = (async () => {
+  const { updateBackup } = await chrome.storage.local.get("updateBackup");
+  if (updateBackup) {
+    await chrome.storage.session.set(updateBackup);
+    await chrome.storage.local.remove("updateBackup");
+  }
+  const { status } = await chrome.storage.session.get("status");
   if (status) last = ["running", "countdown", "starting"].includes(status.phase)
     ? { ...status, phase: "stopped", message: "Session ended. Check the document before starting again." } : status;
+})();
+
+// The local updater writes this marker only after a complete installation.
+// Never fetch or execute remote JavaScript inside the extension.
+const updateAlarm = "check-installed-update";
+async function reloadInstalledUpdate() {
+  await ready;
+  if (active) return;
+  try {
+    const response = await fetch(chrome.runtime.getURL("installed-update.json"), { cache: "no-store" });
+    if (!response.ok) return;
+    const update = await response.json();
+    if (update.ready !== true || typeof update.version !== "string" || update.version === chrome.runtime.getManifest().version) return;
+    const manifestResponse = await fetch(chrome.runtime.getURL("manifest.json"), { cache: "no-store" });
+    if (!manifestResponse.ok) return;
+    const manifest = await manifestResponse.json();
+    const confirmation = await fetch(chrome.runtime.getURL("installed-update.json"), { cache: "no-store" });
+    if (!confirmation.ok) return;
+    const current = await confirmation.json();
+    if (!active && current.ready === true && current.commit === update.commit && current.version === update.version && manifest.version === update.version) {
+      const updateBackup = await chrome.storage.session.get(["draft", "status"]);
+      await chrome.storage.local.set({ updateBackup });
+      if (active) { await chrome.storage.local.remove("updateBackup"); return; }
+      chrome.runtime.reload();
+    }
+  } catch {
+    // A missing marker is normal when the local updater is not installed.
+  }
+}
+chrome.alarms.onAlarm.addListener(alarm => {
+  if (alarm.name === updateAlarm) void reloadInstalledUpdate();
 });
+void chrome.alarms.create(updateAlarm, { periodInMinutes: 1 });
 
 // Google Docs routes canvas-editor keyboard input through this editable frame.
 // Fail closed when focus is in the title, menus, comments, or an unknown editor.
