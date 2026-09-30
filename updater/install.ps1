@@ -19,7 +19,7 @@ $taskConfigJson = @{ target = $taskTarget; git = $GitPath } | ConvertTo-Json
 if ($LASTEXITCODE -ne 0) { throw 'Initial update failed. Resolve the error before installing the scheduled task.' }
 $taskScript = Join-Path $InstallDirectory 'run-hidden.vbs'
 $taskCommand = '"' + $NodePath + '" "' + (Join-Path $InstallDirectory 'update.mjs') + '" "' + $taskConfigPath + '"'
-$taskVbs = 'CreateObject("WScript.Shell").Run "' + $taskCommand.Replace('"','""') + '", 0, True'
+$taskVbs = 'WScript.Quit CreateObject("WScript.Shell").Run("' + $taskCommand.Replace('"','""') + '", 0, True)'
 [IO.File]::WriteAllText($taskScript, $taskVbs)
 $taskAction = New-ScheduledTaskAction -Execute "$env:SystemRoot\System32\wscript.exe" -Argument ('"' + $taskScript + '"')
 $taskTriggers = @(
